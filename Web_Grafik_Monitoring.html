@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monitoring dan Kontrol Daya PLTS</title>
+    <link rel="icon" href="/images/favicon.ico" type="image/x-icon" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+
+<body>
+    <div class="container mx-auto my-5">
+        <div class="flex justify-center p-5">
+            <h1 class="text-4xl">Monitoring dan Kontrol Daya PLTS</h1>
+        </div>
+        <div class="flex flex-wrap flex justify-center items-center">
+            <!-- Ini Arus -->
+            <div class="w-full md:w-1/3 p-4">
+                <div class="bg-white border rounded shadow-md text-center">
+                    <div class="p-3 border-b">
+                        <div class="font-bold">Arus (A)</div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-3xl" id="tampilkan-arus">0</h3>
+                        <canvas id="arus-Grafik" class="w-full h-48"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- Ini Tegangan -->
+            <div class="w-full md:w-1/3 p-4">
+                <div class="bg-white border rounded shadow-md text-center">
+                    <div class="p-3 border-b">
+                        <div class="font-bold">Tegangan (V)</div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-3xl" id="tampilkan-tegangan">0</h3>
+                        <canvas id="tegangan-Grafik" class="w-full h-48"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- Ini Daya -->
+            <div class="w-full md:w-1/3 p-4">
+                <div class="bg-white border rounded shadow-md text-center">
+                    <div class="p-3 border-b">
+                        <div class="font-bold">Daya (W)</div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-3xl" id="tampilkan-daya">0</h3>
+                        <canvas id="daya-Grafik" class="w-full h-48"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>    
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const clientId = "POLINDRA-IOT-2023-KELOMPOK-100-" + Math.random().toString(16).substr(2, 8);
+        const host = "ws://broker.hivemq.com:8000/mqtt";
+
+        const options = {
+            keepalive: 60,
+            clientId: clientId,
+            protocolId: "MQTT",
+            protocolVersion: 4,
+            clean: true,
+            reconnectPeriod: 1000,
+            connectTimeout: 30 * 1000,
+            will: {
+                topic: "WillMsg",
+                payload: "Connection Closed abnormally..!",
+                qos: 0,
+                retain: false,
+            }
+        };
+
+        const client = mqtt.connect(host, options);
+
+        client.on("error", (err) => {
+            console.log("Connection error: ", err);
+            client.end();
+        });
+
+        client.on("reconnect", () => {
+            console.log("Reconnecting...");
+        });
+
+        client.on("connect", () => {
+            console.log(`Client connected: ${clientId}`);
+            client.subscribe("kelompok-5/sensor/2", { qos: 0 });
+        });
+
+        // Chart.js
+        const maxDataPoints = 10;
+
+        function updateChart(chart, value) {
+            const timestamp = new Date().toLocaleTimeString();
+
+            // Update labels and datasets
+            chart.data.labels.push(timestamp);
+            chart.data.datasets[0].data.push(value);
+
+            // Remove the oldest data point if data exceeds the maximum
+            if (chart.data.labels.length > maxDataPoints) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+
+            // Update the chart
+            chart.update();
+        }
+
+        const arusCtx = document.getElementById('arus-Grafik').getContext('2d');
+        const teganganCtx = document.getElementById('tegangan-Grafik').getContext('2d');
+        const dayaCtx = document.getElementById('daya-Grafik').getContext('2d');
+
+        const arusGrafik = new Chart(arusCtx, {type: 'line',data: {labels: [],datasets: [{label: 'Arus (A)',data: [],backgroundColor: 'rgba(54, 162, 235, 0.2)',borderColor: 'rgba(54, 162, 235, 1)',borderWidth: 1,fill: false,}]},options: {scales: {x: [{type: 'linear',position: 'bottom'}]}}});
+        const teganganGrafik = new Chart(teganganCtx, {type: 'line',data: {labels: [],datasets: [{label: 'Tegangan (V)',data: [],backgroundColor: 'rgba(245, 40, 145, 0.5)',borderColor: 'rgba(245, 40, 145, 0.8)',borderWidth: 1,fill: false,}]},options: {scales: {x: [{type: 'linear',position: 'bottom'}]}}});
+        const dayaGrafik = new Chart(dayaCtx, {type: 'line',data: {labels: [],datasets: [{label: 'Daya (W)',data: [],backgroundColor: 'rgba(136, 40, 145, 0.5)',borderColor: 'rgba(136, 40, 145, 0.8)',borderWidth: 1,fill: false,}]},options: {scales: {x: [{type: 'linear',position: 'bottom'}]}}});
+
+        // Update charts on message reception
+        client.on("message", (topic, message, packet) => {
+            console.log(`Received Message: ${message.toString()} On topic: ${topic}`);
+            //const value = parseFloat(message.toString());
+            const values = parseMessage(message.toString());
+
+            // Update Chart.js charts
+            if (topic.endsWith("kelompok-5/sensor/2")) {
+                const nilaiArus = values["Arus (A)"];
+                const nilaiTegangan = values["Tegangan (V)"];
+                const nilaiDaya = values["Daya (W)"];
+                updateChart(arusGrafik, nilaiArus);
+                document.getElementById("tampilkan-arus").innerHTML = nilaiArus;
+                updateChart(teganganGrafik, nilaiTegangan);
+                document.getElementById("tampilkan-tegangan").innerHTML = nilaiTegangan;
+                updateChart(dayaGrafik, nilaiDaya);
+                document.getElementById("tampilkan-daya").innerHTML = nilaiDaya;
+            }
+        });
+
+        function parseMessage(message) {
+            const values = {};
+            const pairs = message.split(", ");
+            pairs.forEach(pair => {
+                const [key, value] = pair.split(": ");
+                values[key.trim()] = parseFloat(value);
+            });
+            return values;
+        }
+    </script>
+</body>
+
+</html>
